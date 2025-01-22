@@ -1,9 +1,8 @@
 import {Button, Canvas} from 'datocms-react-ui';
 import type {NewUpload, RenderFieldExtensionCtx} from "datocms-plugin-sdk";
-import type {Item, UploadInstancesTargetSchema} from '@datocms/cma-client/dist/types/generated/SimpleSchemaTypes'
+import type {Item, Upload} from '@datocms/cma-client/dist/types/generated/SimpleSchemaTypes'
 import {useEffect, useMemo, useState} from "react";
 import {buildClient, LogLevel} from '@datocms/cma-client-browser';
-
 
 // Borrowing a typedef from the plugin SDK. This is what our asset gallery returns in formValues
 type AssetGalleryMetadata = NonNullable<NewUpload['default_field_metadata']>[string] & { upload_id: string };
@@ -11,7 +10,7 @@ type CollectionRecord = Item & { product_type?: string }
 
 const slugifyProductType = (productType: string): string => {
 
-    // TODO replace with a locale-aware slugify lib
+    // TODO replace this with a locale-aware slugify lib, but only if they want localized filenames
 
     const slugified: string = productType.toLocaleLowerCase("en-US")
         .replace(/\s+/g, '-')
@@ -19,6 +18,19 @@ const slugifyProductType = (productType: string): string => {
     const pluralized = `${slugified}s`
 
     return pluralized;
+}
+
+const slugifyImageName = (productInfo: {
+    productType: string,
+    productHandle: string
+    imgExtension: string,
+    imgMimeType?: string,
+    numberSuffix: string | number,
+}):string => {
+    const {productType, productHandle, imgExtension, imgMimeType, numberSuffix} = productInfo;
+
+    const mediaType: string = imgMimeType?.startsWith('video') ? 'video' : 'image';
+    return `${slugifyProductType(productType)}-${productHandle}-${mediaType}-${numberSuffix}.${imgExtension}`;
 }
 
 export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) => {
@@ -40,7 +52,7 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
     // Shopify collection, which we'll need to look up the product category
     const collectionId = formValues['collection'] as string
 
-    const [images, setImages] = useState<UploadInstancesTargetSchema>([])
+    const [images, setImages] = useState<Upload[]>([])
     const [collection, setCollection] = useState<CollectionRecord | null>(null)
 
     const productType = useMemo(() => {
@@ -78,13 +90,21 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
 
                 // Get existing image information
                 if (galleryItems.length >= 1) {
+                    const ids = galleryItems.map(img => img.upload_id)
                     const images = await client.uploads.list({
                         filter: {
-                            ids: galleryItems.map(img => img.upload_id).join()
+                            ids: ids.join()
                         }
                     })
+
+                    // But they come back out-of-order, so we have to manually sort them
                     if (images) {
-                        setImages(images)
+                        let reorderedImages:Upload[] = []
+                        images.forEach(img => {
+                            const originalIndex = ids.indexOf(img.id)
+                            reorderedImages[originalIndex] = img;
+                        })
+                        setImages(reorderedImages)
                     }
                 }
 
@@ -96,19 +116,35 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
         })()
     }, [collectionId, galleryItems])
 
+    /** Identify images needing a filename update **/
+
+    const slugifiedImageNames = useMemo<string[]>(() => images.map((img, index) => slugifyImageName({
+        productType,
+        productHandle,
+        imgExtension: img.format ?? img.filename.match(/\.([0-9a-z]+)(?:[?#]|$)/i)?.[1] ?? '',
+        imgMimeType: img.mime_type ?? undefined,
+        // numberSuffix: index + 1 // This makes it pretty confusing when they are reordered in the gallery
+        numberSuffix: img.md5.slice(0,5) // We can use a shortened hash instead to better keep track of them
+    })), [images])
+
+    const imagesNeedingUpdate = useMemo<Upload[]>(() => {
+
+    }, [images])
 
     return (
         <Canvas ctx={ctx}>
             <Button type="button" buttonSize="xxs">
                 Add lorem ipsum
             </Button>
-            <h2>Image filenames would be:</h2>
+
+            <h2>Image filenames actually ARE:</h2>
+            {images.map((img, index) => <li key={index}>{img.filename}</li>)}
+
+            <h2>Image filenames SHOULD be:</h2>
             <ul>
-                {images.map((img, index) => {
-                    return <li
-                        key={img.id}>{slugifyProductType(productType)}-{productHandle}-{img.mime_type?.startsWith('video') ? 'video' : 'image'}-{index + 1}.{img.format}</li>
-                })}
+                {slugifiedImageNames.map(((imgName, index) => <li key={index}>{imgName}</li>))}
             </ul>
+
             <h3>Debug:</h3>
             <ul>
                 <li>{galleryItems.length} images detected</li>
