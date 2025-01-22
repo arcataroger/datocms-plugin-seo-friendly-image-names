@@ -1,0 +1,3 @@
+# SEO-Friendly Image Names
+
+<INSERT-YOUR-PLUGIN-DESCRIPTION-HERE>
