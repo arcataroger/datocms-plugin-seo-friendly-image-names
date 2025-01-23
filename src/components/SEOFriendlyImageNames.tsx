@@ -7,6 +7,7 @@ import {buildClient, LogLevel} from '@datocms/cma-client-browser';
 // Borrowing a typedef from the plugin SDK. This is what our asset gallery returns in formValues
 type AssetGalleryMetadata = NonNullable<NewUpload['default_field_metadata']>[string] & { upload_id: string };
 type CollectionRecord = Item & { product_type?: string }
+type ImageNeedingUpdate = { id: string, currentFilename: string, slugifiedFilename: string }
 
 const slugifyProductType = (productType: string): string => {
 
@@ -26,7 +27,7 @@ const slugifyImageName = (productInfo: {
     imgExtension: string,
     imgMimeType?: string,
     numberSuffix: string | number,
-}):string => {
+}): string => {
     const {productType, productHandle, imgExtension, imgMimeType, numberSuffix} = productInfo;
 
     const mediaType: string = imgMimeType?.startsWith('video') ? 'video' : 'image';
@@ -99,7 +100,7 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
 
                     // But they come back out-of-order, so we have to manually sort them
                     if (images) {
-                        let reorderedImages:Upload[] = []
+                        let reorderedImages: Upload[] = []
                         images.forEach(img => {
                             const originalIndex = ids.indexOf(img.id)
                             reorderedImages[originalIndex] = img;
@@ -118,18 +119,28 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
 
     /** Identify images needing a filename update **/
 
-    const slugifiedImageNames = useMemo<string[]>(() => images.map((img, index) => slugifyImageName({
-        productType,
-        productHandle,
-        imgExtension: img.format ?? img.filename.match(/\.([0-9a-z]+)(?:[?#]|$)/i)?.[1] ?? '',
-        imgMimeType: img.mime_type ?? undefined,
-        // numberSuffix: index + 1 // This makes it pretty confusing when they are reordered in the gallery
-        numberSuffix: img.md5.slice(0,5) // We can use a shortened hash instead to better keep track of them
-    })), [images])
+    const slugifiedImageNames = useMemo<string[]>(() =>
+        images.map(img => slugifyImageName({
+            productType,
+            productHandle,
+            imgExtension: img.format ?? img.filename.match(/\.([0-9a-z]+)(?:[?#]|$)/i)?.[1] ?? '',
+            imgMimeType: img.mime_type ?? undefined,
+            // numberSuffix: index + 1 // This makes it pretty confusing when they are reordered in the gallery
+            numberSuffix: img.md5.slice(0, 5) // We can use a shortened hash instead to better keep track of them
+        })), [images])
 
-    const imagesNeedingUpdate = useMemo<Upload[]>(() => {
-
-    }, [images])
+    const imagesNeedingUpdate = useMemo<ImageNeedingUpdate[]>(() =>
+        images.flatMap(((img, index) => {
+            if (img.filename !== slugifiedImageNames[index]) {
+                return [{
+                    id: img.id,
+                    currentFilename: img.filename,
+                    slugifiedFilename: slugifiedImageNames[index]
+                }]
+            } else {
+                return []
+            }
+        })), [images, slugifiedImageNames])
 
     return (
         <Canvas ctx={ctx}>
@@ -137,15 +148,12 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
                 Add lorem ipsum
             </Button>
 
-            <h2>Image filenames actually ARE:</h2>
-            {images.map((img, index) => <li key={index}>{img.filename}</li>)}
-
-            <h2>Image filenames SHOULD be:</h2>
+            <h3>Debug:</h3>
+            <h4>Filenames needing update</h4>
             <ul>
-                {slugifiedImageNames.map(((imgName, index) => <li key={index}>{imgName}</li>))}
+                {imagesNeedingUpdate.map(img => <li key={img.id}>(#{img.id}) {img.currentFilename} should be {img.slugifiedFilename}</li>)}
             </ul>
 
-            <h3>Debug:</h3>
             <ul>
                 <li>{galleryItems.length} images detected</li>
                 <li>Collection ID: {collectionId}</li>
