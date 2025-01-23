@@ -157,7 +157,7 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
                     currentBasename: img.basename,
                     slugifiedBasename: slugifiedImageNames[index],
                     ext: img.format ?? img.filename.match(/\.([0-9a-z]+)(?:[?#]|$)/i)?.[1] ?? '',
-                    thumbnailSrc: `${img.url}?auto=compress&w=50`
+                    thumbnailSrc: img.mime_type?.startsWith('image') ? `${img.url}?auto=compress&w=50&h=50&fit=crop` : videoIcon,
                 }]
             } else {
                 return []
@@ -275,3 +275,5 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
         </Canvas>
     );
 };
+
+const videoIcon = 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPCEtLSBMaWNlbnNlOiBQRC4gTWFkZSBieSBzdGVwaGVuaHV0Y2hpbmdzOiBodHRwczovL2dpdGh1Yi5jb20vc3RlcGhlbmh1dGNoaW5ncy9taWNyb25zIC0tPgo8c3ZnIGZpbGw9IiMwMDAwMDAiIHdpZHRoPSI1MHB4IiBoZWlnaHQ9IjUwcHgiIHZpZXdCb3g9IjAgLTggNTI4IDUyOCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiA+PHRpdGxlPnZpZGVvPC90aXRsZT48cGF0aCBkPSJNMjY0IDQ1NlEyMTEgNDU2IDE2NCA0MjkgMTE4IDQwMiA5MSAzNTYgNjQgMzEwIDY0IDI1NiA2NCAyMDIgOTEgMTU2IDExOCAxMTAgMTY0IDgzIDIxMCA1NiAyNjQgNTYgMzE4IDU2IDM2NCA4MyA0MTAgMTEwIDQzNyAxNTYgNDY0IDIwMiA0NjQgMjU2IDQ2NCAzMDkgNDM3IDM1NiA0MTAgNDAyIDM2NCA0MjkgMzE4IDQ1NiAyNjQgNDU2Wk0zNDUgMjU2TDIxNiAxNjAgMjE2IDM1MiAzNDUgMjU2WiIgLz48L3N2Zz4='
