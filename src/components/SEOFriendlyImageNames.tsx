@@ -1,4 +1,4 @@
-import {Button, Canvas} from 'datocms-react-ui';
+import {Button, Canvas, Section, Spinner} from 'datocms-react-ui';
 import type {NewUpload, RenderFieldExtensionCtx} from "datocms-plugin-sdk";
 import type {Item, Upload} from '@datocms/cma-client/dist/types/generated/SimpleSchemaTypes'
 import {useEffect, useMemo, useState} from "react";
@@ -7,7 +7,13 @@ import {buildClient, LogLevel} from '@datocms/cma-client-browser';
 // Borrowing a typedef from the plugin SDK. This is what our asset gallery returns in formValues
 type AssetGalleryMetadata = NonNullable<NewUpload['default_field_metadata']>[string] & { upload_id: string };
 type CollectionRecord = Item & { product_type?: string }
-type ImageNeedingUpdate = { id: string, currentBasename: string, slugifiedBasename: string }
+type ImageNeedingUpdate = {
+    id: string,
+    currentBasename: string,
+    slugifiedBasename: string,
+    ext: string,
+    thumbnailSrc: string
+}
 
 const slugifyProductType = (productType: string): string => {
 
@@ -48,6 +54,9 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
 
     const [images, setImages] = useState<Upload[]>([])
     const [collection, setCollection] = useState<CollectionRecord | null>(null)
+    const [isLoading, setIsLoading] = useState<boolean>(false)
+    const [loadingMessage, setLoadingMessage] = useState<string | null>()
+    const [isSectionOpen, setIsSectionOpen] = useState<boolean>(false)
 
     const productType = useMemo(() => {
 
@@ -74,13 +83,40 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
 
     /** Fetch needed data from the CMA and update our local state **/
 
+    const fetchImageData = async () => {
+        try {
+        const ids = galleryItems.map(img => img.upload_id)
+        setIsLoading(true)
+        setLoadingMessage('Fetching image metadata...')
+        const images = await client.uploads.list({
+            filter: {
+                ids: ids.join()
+            }
+        })
+
+        // But they come back out-of-order, so we have to manually sort them
+        if (images) {
+            let reorderedImages: Upload[] = []
+            images.forEach(img => {
+                const originalIndex = ids.indexOf(img.id)
+                reorderedImages[originalIndex] = img;
+            })
+            setImages(reorderedImages)
+        }
+        } catch (error) {
+            console.error(error)
+        } finally {
+            setIsLoading(false);
+            setLoadingMessage(null);
+        }
+    }
+
     useEffect(() => {
         (async () => {
-
-            console.log('starting fetches')
-
             try {
+                setIsLoading(true);
                 // Get the product type from the collection Id
+                setLoadingMessage('Fetching product category...')
                 const collection = await client.items.find(collectionId)
                 if (collection) {
                     setCollection(collection)
@@ -88,27 +124,15 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
 
                 // Get existing image information
                 if (galleryItems.length >= 1) {
-                    const ids = galleryItems.map(img => img.upload_id)
-                    const images = await client.uploads.list({
-                        filter: {
-                            ids: ids.join()
-                        }
-                    })
-
-                    // But they come back out-of-order, so we have to manually sort them
-                    if (images) {
-                        let reorderedImages: Upload[] = []
-                        images.forEach(img => {
-                            const originalIndex = ids.indexOf(img.id)
-                            reorderedImages[originalIndex] = img;
-                        })
-                        setImages(reorderedImages)
-                    }
+                    await fetchImageData();
                 }
 
 
             } catch (err) {
                 console.error(err)
+            } finally {
+                setIsLoading(false);
+                setLoadingMessage(null);
             }
 
         })()
@@ -131,56 +155,123 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
                 return [{
                     id: img.id,
                     currentBasename: img.basename,
-                    slugifiedBasename: slugifiedImageNames[index]
+                    slugifiedBasename: slugifiedImageNames[index],
+                    ext: img.format ?? img.filename.match(/\.([0-9a-z]+)(?:[?#]|$)/i)?.[1] ?? '',
+                    thumbnailSrc: `${img.url}?auto=compress&w=50`
                 }]
             } else {
                 return []
             }
         })), [images, slugifiedImageNames])
 
-    const updateBasename = async ({id, newBasename}: { id: string, newBasename: string }) => {
+    const updateSingleFile = async ({id, newBasename}: { id: string, newBasename: string }) => {
         try {
+            setIsLoading(true)
+            setLoadingMessage(`Renaming image ${id} to ${newBasename}...`)
             const updatedImage = await client.uploads.update(id, {
                 basename: newBasename,
             })
 
             if (updatedImage.basename === newBasename) {
-               setImages(prevImages => prevImages.map(prevImg => prevImg.id === updatedImage.id ? updatedImage : prevImg))
+                setImages(prevImages => prevImages.map(prevImg => prevImg.id === updatedImage.id ? updatedImage : prevImg))
             } else {
                 throw new Error(`Image ${id} basename mismatch even after update: ${updatedImage.basename} does not match ${newBasename}`)
             }
         } catch (err) {
             console.error(err)
+        } finally {
+            setIsLoading(false)
+            setLoadingMessage(null)
+        }
+    }
+
+    const handleSingleFileUpdate = async (id: string) => {
+        const {slugifiedBasename, currentBasename} = imagesNeedingUpdate.find(img => img.id === id)!
+
+        const result = await ctx.openConfirm({
+            title: `Rename ${currentBasename}?`,
+            content: `New name: ${slugifiedBasename}?`,
+            choices: [
+                {
+                    label: 'OK',
+                    value: true,
+                    intent: 'positive',
+                },
+            ],
+            cancel: {
+                label: 'Cancel',
+                value: false,
+            },
+        });
+
+        if (result) {
+            try {
+                await updateSingleFile({
+                    id: id,
+                    newBasename: slugifiedBasename
+                })
+                await ctx.notice(`Updated to ${slugifiedBasename}`);
+            } catch (error) {
+                await ctx.alert(`Failed to update ${currentBasename}`);
+            }
         }
     }
 
     return (
         <Canvas ctx={ctx}>
-            <Button type="button" buttonSize="xxs">
-                Add lorem ipsum
-            </Button>
+            <Section
+                title={`${imagesNeedingUpdate.length ? '⚠️' : '✅'} Asset Stack SEO Plugin: ${imagesNeedingUpdate.length} update(s) needed`}
+                collapsible={{isOpen: isSectionOpen, onToggle: () => setIsSectionOpen((prev) => !prev)}}
+            >
 
-            <h2>Debug:</h2>
-            <h3>{imagesNeedingUpdate.length}/{galleryItems.length} images need a basename update:</h3>
-            <ul>
-                {imagesNeedingUpdate.map(img => <li key={img.id}>(#{img.id}) {img.currentBasename} should
-                    be {img.slugifiedBasename}. <a href={"#"} onClick={() => updateBasename({
-                        id: img.id,
-                        newBasename: img.slugifiedBasename
-                    })}>Update?</a></li>)}
-            </ul>
+                {isLoading && <div>
+                    <Spinner size={24}/> <span>Loading: {loadingMessage ?? 'Please wait...'}</span>
+                </div>}
 
-            <ul>
-                <li>{images.length} images cached (out of {galleryItems.length} in gallery)</li>
-                <li>Collection ID: {collectionId}</li>
-                <li>Shopify handle: {productHandle}</li>
-                <li>Product type: {productType}</li>
-            </ul>
+                {!isLoading && <>
+                    <h2>{imagesNeedingUpdate.length} out of {galleryItems.length} images need a SEO-friendly
+                        filename:</h2>
+                    {imagesNeedingUpdate.map(img => <div key={img.id} style={{display: 'flex', marginBottom: '2em'}}>
+                        <div style={{display: 'flex', alignItems: 'center'}}><a href={"#"} onClick={async () => {
+                            const editResult = await ctx.editUpload(img.id);
+                            if (editResult) {
+                                await fetchImageData() // So the plugin sees the updates
+                            }
+                        }}>
+                            <img src={img.thumbnailSrc} alt={img.currentBasename}
+                                 style={{border: '2px solid lightgray'}} title={img.currentBasename}/>
+                        </a></div>
+                        <div style={{display: 'flex'}}>
+                            <ul style={{margin: 0}}>
+                                <li>Currently: <strong>{img.currentBasename}.{img.ext}</strong></li>
 
-            <pre>
-                {/*{JSON.stringify(images, null, 2)}*/}
-            </pre>
+                                <li>Should be "{img.slugifiedBasename}.{img.ext}". <a href={"#"}
+                                                                                      onClick={() => handleSingleFileUpdate(img.id)}>Update</a>?
+                                </li>
+                            </ul>
+                        </div>
+                    </div>)}
 
+                    <Button type="button" buttonSize="l">
+                        Update All ({imagesNeedingUpdate.length})
+                    </Button>
+
+                </>
+                }
+
+
+                <h3>Asset SEO Debug Info:</h3>
+                <a href={"#"} onClick={() => {
+                    fetchImageData()
+                }}>Refresh list</a>
+                <ul>
+                    <li>{images.length} images cached (out of {galleryItems.length} in gallery)</li>
+                    <li>Collection ID: {collectionId}</li>
+                    <li>Shopify handle: {productHandle}</li>
+                    <li>Product type: {productType}</li>
+                </ul>
+
+            </Section>
         </Canvas>
     );
 };
