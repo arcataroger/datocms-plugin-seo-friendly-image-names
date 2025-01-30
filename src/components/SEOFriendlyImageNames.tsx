@@ -193,13 +193,13 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
             content: `New name: ${slugifiedBasename}?`,
             choices: [
                 {
-                    label: 'OK',
+                    label: 'Rename this file',
                     value: true,
                     intent: 'positive',
                 },
             ],
             cancel: {
-                label: 'Cancel',
+                label: 'Go back',
                 value: false,
             },
         });
@@ -229,8 +229,8 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
                 </div>}
 
                 {!isLoading && <>
-                    <h2>{imagesNeedingUpdate.length} out of {galleryItems.length} images need a SEO-friendly
-                        filename:</h2>
+                    <h2>{imagesNeedingUpdate.length} images still need a SEO-friendly
+                        filename (out of {galleryItems.length} total):</h2>
                     {imagesNeedingUpdate.map(img => <div key={img.id} style={{display: 'flex', marginBottom: '2em'}}>
                         <div style={{display: 'flex', alignItems: 'center'}}><a href={"#"} onClick={async () => {
                             const editResult = await ctx.editUpload(img.id);
@@ -239,7 +239,7 @@ export const SEOFriendlyImageNames = ({ctx}: { ctx: RenderFieldExtensionCtx }) =
                             }
                         }}>
                             <img src={img.thumbnailSrc} alt={img.currentBasename}
-                                 style={{border: '2px solid lightgray'}} title={img.currentBasename}/>
+                                 style={{border: '2px solid lightgray', width: 50, height: 50}} title={img.currentBasename} />
                         </a></div>
                         <div style={{display: 'flex'}}>
                             <ul style={{margin: 0}}>
