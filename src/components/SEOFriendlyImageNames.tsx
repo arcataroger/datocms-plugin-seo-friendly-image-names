@@ -324,121 +324,126 @@ export const SEOFriendlyImageNames = ({
           onToggle: () => setIsSectionOpen((prev) => !prev),
         }}
       >
-        {isLoading && (
-          <div>
-            <Spinner size={24} />{" "}
-            <span>Loading: {loadingMessage ?? "Please wait..."}</span>
-          </div>
-        )}
+        <div style={{ border: '1px solid var(--primary-color)', padding: 30, paddingTop: 0, backgroundColor: "var(--light-color)" }}>
+          {isLoading && (
+            <div>
+              <Spinner size={24} />{" "}
+              <span>Loading: {loadingMessage ?? "Please wait..."}</span>
+            </div>
+          )}
 
-        {!isLoading && imagesNeedingUpdate.length >= 1 && (
-          <>
-            <h2>
-              {imagesNeedingUpdate.length} images still need a SEO-friendly
-              filename (out of {galleryItems.length} total):
-            </h2>
-            {imagesNeedingUpdate.map((img) => (
-              <div
-                key={img.id}
-                style={{ display: "flex", marginBottom: "2em" }}
-              >
-                <div style={{ display: "flex", alignItems: "center" }}>
-                  <a
-                    href={"#"}
-                    onClick={async () => {
-                      const editResult = await ctx.editUpload(img.id);
-                      if (editResult) {
-                        await fetchImageData(); // So the plugin sees the updates
-                      }
-                    }}
-                  >
-                    <img
-                      src={img.thumbnailSrc}
-                      alt={img.currentBasename}
-                      style={{
-                        border: "2px solid lightgray",
-                        width: 50,
-                        height: 50,
+          {!isLoading && imagesNeedingUpdate.length >= 1 && (
+            <>
+              <h2>
+                {imagesNeedingUpdate.length} image(s) need a SEO-friendly
+                filename (out of {galleryItems.length} total):
+              </h2>
+              {imagesNeedingUpdate.map((img) => (
+                <div
+                  key={img.id}
+                  style={{ display: "flex", marginBottom: "2em" }}
+                >
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <a
+                      href={"#"}
+                      onClick={async () => {
+                        const editResult = await ctx.editUpload(img.id);
+                        if (editResult) {
+                          await fetchImageData(); // So the plugin sees the updates
+                        }
                       }}
-                      title={img.currentBasename}
-                    />
-                  </a>
+                    >
+                      <img
+                        src={img.thumbnailSrc}
+                        alt={img.currentBasename}
+                        style={{
+                          border: "2px solid lightgray",
+                          width: 50,
+                          height: 50,
+                        }}
+                        title={img.currentBasename}
+                      />
+                    </a>
+                  </div>
+                  <div style={{ display: "flex" }}>
+                    <ul style={{ padding: 10, listStyle: "none" }}>
+                      <li>
+                        Currently:{" "}
+                        <strong>
+                          {img.currentBasename}.{img.ext}
+                        </strong>
+                      </li>
+
+                      <li>
+                        Should be "{img.slugifiedBasename}.{img.ext}".{" "}
+                        <a
+                          href={"#"}
+                          onClick={() => handleSingleFileUpdate(img.id)}
+                        >
+                          Update
+                        </a>
+                        ?
+                      </li>
+                    </ul>
+                  </div>
                 </div>
-                <div style={{ display: "flex" }}>
-                  <ul style={{ margin: 0 }}>
-                    <li>
-                      Currently:{" "}
-                      <strong>
-                        {img.currentBasename}.{img.ext}
-                      </strong>
-                    </li>
+              ))}
 
-                    <li>
-                      Should be "{img.slugifiedBasename}.{img.ext}".{" "}
-                      <a
-                        href={"#"}
-                        onClick={() => handleSingleFileUpdate(img.id)}
-                      >
-                        Update
-                      </a>
-                      ?
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            ))}
+              <Button
+                type="button"
+                buttonSize="l"
+                onClick={() => handleUpdateAllFiles()}
+                buttonType="primary"
+              >
+                Update All ({imagesNeedingUpdate.length})
+              </Button>
+            </>
+          )}
 
-            <Button
-              type="button"
-              buttonSize="l"
-              onClick={() => handleUpdateAllFiles()}
-            >
-              Update All ({imagesNeedingUpdate.length})
-            </Button>
-          </>
-        )}
+          {!isLoading && !imagesNeedingUpdate.length && (
+            <div style={{ fontSize: 18 }}>
+              <p>
+                Everything looks good! You don't need any filename updates right
+                now.{" "}
+                <a
+                  href={"#"}
+                  onClick={() => {
+                    fetchImageData();
+                  }}
+                >
+                  Check again?
+                </a>
+              </p>
+            </div>
+          )}
 
-        {!isLoading && !imagesNeedingUpdate.length && (
-          <div style={{ fontSize: 18 }}>
+          <div
+            style={{ background: "white", padding: "10px 1em", marginTop: 20 }}
+          >
             <p>
-              Everything looks good! You don't need any filename updates right
-              now.{" "}
+              <strong>SEO Plugin Debug Info</strong>
+            </p>
+
+            <p>
               <a
                 href={"#"}
                 onClick={() => {
                   fetchImageData();
                 }}
               >
-                Check again?
+                Refresh list
               </a>
             </p>
+            <ul>
+              <li>
+                {images.length} images cached (out of {galleryItems.length} in
+                gallery)
+              </li>
+              <li>Collection ID: {collectionId}</li>
+              <li>Shopify handle: {productHandle}</li>
+              <li>Product type: {productType}</li>
+            </ul>
           </div>
-        )}
-
-        <div style={{ background: "#EEE", padding: "10px 1em", marginTop: 20 }}>
-          <p>
-            <strong>SEO Plugin Debug Info</strong>
-          </p>
-
-          <p>
-            <a
-              href={"#"}
-              onClick={() => {
-                fetchImageData();
-              }}
-            >
-              Refresh list
-            </a>
-          </p>
-          <ul>
-            <li>
-              {images.length} images cached (out of {galleryItems.length} in
-              gallery)
-            </li>
-            <li>Collection ID: {collectionId}</li>
-            <li>Shopify handle: {productHandle}</li>
-            <li>Product type: {productType}</li>
-          </ul>
         </div>
       </Section>
     </Canvas>
