@@ -101,7 +101,7 @@ export const SEOFriendlyImageNames = ({
     try {
       const ids = galleryItems.map((img) => img.upload_id);
       setIsLoading(true);
-      setLoadingMessage("Fetching image metadata...");
+      setLoadingMessage("Refreshing image metadata...");
       const images = await client.uploads.list({
         filter: {
           ids: ids.join(),
@@ -228,16 +228,15 @@ export const SEOFriendlyImageNames = ({
   };
 
   const handleSingleFileUpdate = async (id: string) => {
-    const { slugifiedBasename, currentBasename } = imagesNeedingUpdate.find(
-      (img) => img.id === id,
-    )!;
+    const { slugifiedBasename, currentBasename, ext } =
+      imagesNeedingUpdate.find((img) => img.id === id)!;
 
     const result = await ctx.openConfirm({
-      title: `Rename ${currentBasename}?`,
-      content: `New name: ${slugifiedBasename}?`,
+      title: `Rename ${currentBasename}.${ext}?`,
+      content: `New name: ${slugifiedBasename}.${ext}`,
       choices: [
         {
-          label: "Rename this file",
+          label: "Rename one file",
           value: true,
           intent: "positive",
         },
@@ -254,18 +253,16 @@ export const SEOFriendlyImageNames = ({
           id: id,
           newBasename: slugifiedBasename,
         });
-        await ctx.notice(`Updated to ${slugifiedBasename}`);
+        await ctx.notice(`Updated to ${slugifiedBasename}.${ext}`);
       } catch (error) {
         console.log(error);
-        await ctx.alert(`Failed to update ${currentBasename}: ${error}`);
+        await ctx.alert(`Failed to update ${currentBasename}.${ext}: ${error}`);
       }
     }
   };
 
   const updateAllFilesInParallel = async () => {
     try {
-      setIsLoading(true);
-      setLoadingMessage(`Updating ${imagesNeedingUpdate.length} names...`);
       // Update all the names. DatoCMS limit is 60 every 3 seconds, so we don't need to worry about it.
       await Promise.all(
         imagesNeedingUpdate.map(async (img) => {
@@ -279,9 +276,6 @@ export const SEOFriendlyImageNames = ({
       await fetchImageData();
     } catch (error) {
       console.error(error);
-    } finally {
-      setLoadingMessage(null);
-      setIsLoading(false);
     }
   };
 
@@ -303,7 +297,10 @@ export const SEOFriendlyImageNames = ({
     });
 
     if (result) {
+      setIsLoading(true);
+      setLoadingMessage(`Updating ${imagesNeedingUpdate.length} names...`);
       try {
+        await ctx.notice(`Updating ${imagesNeedingUpdate.length} files...`);
         await updateAllFilesInParallel();
         await ctx.notice(
           `Successfully updated ${imagesNeedingUpdate.length} files`,
@@ -311,6 +308,9 @@ export const SEOFriendlyImageNames = ({
       } catch (error) {
         console.log(error);
         await ctx.alert(`Bulk update failed: ${error}`);
+      } finally {
+        setIsLoading(false);
+        setLoadingMessage(null);
       }
     }
   };
@@ -324,11 +324,28 @@ export const SEOFriendlyImageNames = ({
           onToggle: () => setIsSectionOpen((prev) => !prev),
         }}
       >
-        <div style={{ border: '1px solid var(--primary-color)', padding: 30, paddingTop: 0, backgroundColor: "var(--light-color)" }}>
+        <div
+          style={{
+            border: "1px solid var(--primary-color)",
+            padding: '0 30px 10px 30px',
+            backgroundColor: "var(--light-color)",
+          }}
+        >
+          <p>
+            <a
+              href={"#"}
+              onClick={() => {
+                fetchImageData();
+              }}
+            >
+              Refresh list
+            </a>
+          </p>
+
           {isLoading && (
             <div>
               <Spinner size={24} />{" "}
-              <span>Loading: {loadingMessage ?? "Please wait..."}</span>
+              <span>{loadingMessage ?? "Loading, please wait..."}</span>
             </div>
           )}
 
@@ -341,7 +358,7 @@ export const SEOFriendlyImageNames = ({
               {imagesNeedingUpdate.map((img) => (
                 <div
                   key={img.id}
-                  style={{ display: "flex", marginBottom: "2em" }}
+                  style={{ display: "flex", marginBottom: "1.5em" }}
                 >
                   <div style={{ display: "flex", alignItems: "center" }}>
                     <a
@@ -357,7 +374,7 @@ export const SEOFriendlyImageNames = ({
                         src={img.thumbnailSrc}
                         alt={img.currentBasename}
                         style={{
-                          border: "2px solid lightgray",
+                          border: "2px solid var(--accent-color)",
                           width: 50,
                           height: 50,
                         }}
@@ -366,7 +383,9 @@ export const SEOFriendlyImageNames = ({
                     </a>
                   </div>
                   <div style={{ display: "flex" }}>
-                    <ul style={{ padding: 10, listStyle: "none" }}>
+                    <ul
+                      style={{ paddingLeft: 10, margin: 0, listStyle: "none" }}
+                    >
                       <li>
                         Currently:{" "}
                         <strong>
@@ -404,46 +423,10 @@ export const SEOFriendlyImageNames = ({
             <div style={{ fontSize: 18 }}>
               <p>
                 Everything looks good! You don't need any filename updates right
-                now.{" "}
-                <a
-                  href={"#"}
-                  onClick={() => {
-                    fetchImageData();
-                  }}
-                >
-                  Check again?
-                </a>
+                now.
               </p>
             </div>
           )}
-
-          <div
-            style={{ background: "white", padding: "10px 1em", marginTop: 20 }}
-          >
-            <p>
-              <strong>SEO Plugin Debug Info</strong>
-            </p>
-
-            <p>
-              <a
-                href={"#"}
-                onClick={() => {
-                  fetchImageData();
-                }}
-              >
-                Refresh list
-              </a>
-            </p>
-            <ul>
-              <li>
-                {images.length} images cached (out of {galleryItems.length} in
-                gallery)
-              </li>
-              <li>Collection ID: {collectionId}</li>
-              <li>Shopify handle: {productHandle}</li>
-              <li>Product type: {productType}</li>
-            </ul>
-          </div>
         </div>
       </Section>
     </Canvas>
