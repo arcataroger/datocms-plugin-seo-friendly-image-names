@@ -318,7 +318,14 @@ export const SEOFriendlyImageNames = ({
   return (
     <Canvas ctx={ctx}>
       <Section
-        title={`${imagesNeedingUpdate.length ? "⚠️" : "✅"} Asset Stack SEO Plugin: ${imagesNeedingUpdate.length >= 1 ? `${imagesNeedingUpdate.length} update(s) needed` : "All good!"}`}
+        title={
+          <span onClick={() => setIsSectionOpen((prev) => !prev)}>
+            {imagesNeedingUpdate.length ? "⚠️" : "✅"} Asset Stack SEO Plugin:{" "}
+            {imagesNeedingUpdate.length >= 1
+              ? `${imagesNeedingUpdate.length} update(s) needed`
+              : "All good!"}
+          </span>
+        }
         collapsible={{
           isOpen: isSectionOpen,
           onToggle: () => setIsSectionOpen((prev) => !prev),
@@ -327,7 +334,7 @@ export const SEOFriendlyImageNames = ({
         <div
           style={{
             border: "1px solid var(--primary-color)",
-            padding: '0 30px 10px 30px',
+            padding: "0 30px 10px 30px",
             backgroundColor: "var(--light-color)",
           }}
         >
