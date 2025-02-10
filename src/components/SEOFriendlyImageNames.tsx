@@ -5,7 +5,8 @@ import type {
   Upload,
 } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
 import { useEffect, useMemo, useState } from "react";
-import { buildClient, LogLevel } from "@datocms/cma-client-browser"; // Borrowing a typedef from the plugin SDK. This is what our asset gallery returns in formValues
+import s from "./styles.module.css";
+import { cmaClient } from "../utils/cmaClient.ts";
 
 // Borrowing a typedef from the plugin SDK. This is what our asset gallery returns in formValues
 type AssetGalleryMetadata = NonNullable<
@@ -84,17 +85,6 @@ export const SEOFriendlyImageNames = ({
     }
   }, [collection]);
 
-  // Limited-permission API token from https://vrai.admin.datocms.com/environments/datocms-support-plugin-testing/project_settings/access_tokens/321640/edit
-  // You could also use ctx.currentUserAccessToken instead, but that has all the permissions of the current editor. This way is safer.
-  const accessToken = import.meta.env.VITE_DATOCMS_LIMITED_ACCESS_TOKEN;
-
-  // Initialize Dato CMA client
-  const client = buildClient({
-    apiToken: accessToken,
-    environment: "datocms-support-plugin-testing", // Replace with primary once tested
-    logLevel: LogLevel.BASIC, // Or LogLevel.BODY for more debug info
-  });
-
   /** Fetch needed data from the CMA and update our local state **/
 
   const fetchImageData = async () => {
@@ -102,7 +92,7 @@ export const SEOFriendlyImageNames = ({
       const ids = galleryItems.map((img) => img.upload_id);
       setIsLoading(true);
       setLoadingMessage("Refreshing image metadata...");
-      const images = await client.uploads.list({
+      const images = await cmaClient.uploads.list({
         filter: {
           ids: ids.join(),
         },
@@ -131,7 +121,7 @@ export const SEOFriendlyImageNames = ({
         setIsLoading(true);
         // Get the product type from the collection Id
         setLoadingMessage("Fetching product category...");
-        const collection = await client.items.find(collectionId);
+        const collection = await cmaClient.items.find(collectionId);
         if (collection) {
           setCollection(collection);
         }
@@ -202,7 +192,7 @@ export const SEOFriendlyImageNames = ({
     try {
       setIsLoading(true);
       setLoadingMessage(`Renaming image ${id} to ${newBasename}...`);
-      const updatedImage = await client.uploads.update(id, {
+      const updatedImage = await cmaClient.uploads.update(id, {
         basename: newBasename,
       });
 
@@ -266,7 +256,7 @@ export const SEOFriendlyImageNames = ({
       // Update all the names. DatoCMS limit is 60 every 3 seconds, so we don't need to worry about it.
       await Promise.all(
         imagesNeedingUpdate.map(async (img) => {
-          await client.uploads.update(img.id, {
+          await cmaClient.uploads.update(img.id, {
             basename: img.slugifiedBasename,
           });
         }),
@@ -326,6 +316,7 @@ export const SEOFriendlyImageNames = ({
               : "All good!"}
           </span>
         }
+        headerClassName={s.clickableSection}
         collapsible={{
           isOpen: isSectionOpen,
           onToggle: () => setIsSectionOpen((prev) => !prev),
