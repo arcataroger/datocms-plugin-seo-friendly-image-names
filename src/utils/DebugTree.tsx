@@ -260,8 +260,7 @@ export const DebugTree = ({ data }: { data: unknown }) => {
   });
 
   return (
-    <>
-      <h3>Debug</h3>
+    <div style={{ marginBottom: "2em", marginTop: "2em" }}>
       <TextField
         id="debugFilter"
         name="debugFilter"
@@ -269,7 +268,7 @@ export const DebugTree = ({ data }: { data: unknown }) => {
         value={filterText}
         onChange={(value) => setFilterText(value)}
       />
-      <div style={{ overflowY: "auto", height: 300, marginTop: 5 }}>
+      <div style={{ overflowY: "auto", maxHeight: 300, marginTop: 5 }}>
         {filteredData && Object.values(filteredData).length > 0 ? (
           <JSONTree
             key={treeKey}
@@ -284,6 +283,6 @@ export const DebugTree = ({ data }: { data: unknown }) => {
           `No results for "${debouncedFilterText}".`
         )}
       </div>
-    </>
+    </div>
   );
 };

@@ -1,18 +1,23 @@
-import { RenderManualFieldExtensionConfigScreenCtx } from "datocms-plugin-sdk";
-import { Canvas } from "datocms-react-ui";
-import { DebugTree } from "../utils/DebugTree.tsx";
-import { useEffect, useMemo, useState } from "react";
-import { cmaClient } from "../utils/cmaClient.ts";
 import {
   type Field,
-  type FieldInstancesTargetSchema,
-  type Item,
-} from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
+  RenderManualFieldExtensionConfigScreenCtx,
+} from "datocms-plugin-sdk";
+import { Canvas } from "datocms-react-ui";
+import { DebugTree } from "../utils/DebugTree.tsx";
+import { useCallback, useMemo } from "react";
+
+const SUPPORTED_FIELD_TYPES: readonly Field["attributes"]["field_type"][] = [
+  "string",
+  "slug",
+  "integer",
+  "float",
+  "link",
+];
 
 type Validators =
   | {
       item_item_type?: {
-        item_types?: string[];
+        item_types: string[];
       };
     }
   | undefined;
@@ -23,142 +28,81 @@ export const ManualFieldConfigScreen = ({
   ctx: RenderManualFieldExtensionConfigScreenCtx;
 }) => {
   const {
-    itemType: {
-      attributes: { api_key: modelApiKey },
-    },
+    itemType: { id: currentModelId },
+    fields: allFieldsById,
+    itemTypes: allItemTypesById,
   } = ctx;
 
-  const [modelFields, setModelFields] = useState<FieldInstancesTargetSchema>(
-    [],
+  const getSupportedFields = useCallback(
+    (
+      modelId: string,
+    ): Extract<
+      Field,
+      { attributes: { field_type: (typeof SUPPORTED_FIELD_TYPES)[number] } }
+    >[] =>
+      Object.values(allFieldsById)
+        .flatMap((field) =>
+          field?.relationships?.item_type?.data?.id === modelId &&
+          SUPPORTED_FIELD_TYPES.includes(field?.attributes?.field_type)
+            ? [field]
+            : [],
+        )
+        .sort((a, b) =>
+          a.attributes.api_key.localeCompare(b.attributes.api_key),
+        ),
+    [allFieldsById, SUPPORTED_FIELD_TYPES],
   );
 
-  const supportedFieldTypes: Field["field_type"][] = [
-    "string",
-    "slug",
-    "integer",
-    "float",
-    "link",
-  ];
+  const currentModelFields: { [k: string]: Field } = useMemo(() => {
+    const supportedFieldsInCurrentModel = getSupportedFields(currentModelId);
 
-  const supportedFields = useMemo<FieldInstancesTargetSchema>(() => {
-    return modelFields.filter((field) =>
-      supportedFieldTypes.includes(field.field_type),
-    );
-  }, [modelFields]);
+    return Object.fromEntries(
+      supportedFieldsInCurrentModel.flatMap((field) => {
+        switch (field?.attributes?.field_type) {
+          case "link": {
+            const validators = field?.attributes.validators as Validators;
+            const relatedModelIds = validators?.item_item_type?.item_types;
+            if (!relatedModelIds) {
+              return [];
+            }
 
-  const [relatedFields, setRelatedFields] = useState<any>();
-
-  const [mostRecentRecordOfModel, setMostRecentRecordOfModel] =
-    useState<Item>();
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const fields = await cmaClient.fields.list(modelApiKey);
-        if (fields) {
-          setModelFields(fields);
-
-          const linkFields = fields.filter(
-            ({ field_type }) => field_type === "link",
-          );
-
-          const linkedFields = await Promise.all(
-            linkFields.map(async (field) => {
-              const { validators } = field as { validators: Validators }; // assuming validators is defined on field
-
-              // If validators exist and there are related model IDs, fetch the fields
-              const supportedFields = validators?.item_item_type?.item_types
-                ?.length
-                ? Object.fromEntries(
-                    await Promise.all(
-                      validators.item_item_type.item_types.map(
-                        async (relatedModelId) => {
-                          // Await the asynchronous call for each relatedModelId
-                          const modelData =
-                            await cmaClient.itemTypes.find(relatedModelId);
-                          const { id, api_key, name } = modelData;
-
-                          const fieldData =
-                            await cmaClient.fields.list(relatedModelId);
-
-                          const supportedFields = fieldData.filter((field) =>
-                            supportedFieldTypes.includes(field.field_type),
-                          );
-
-                          return [
-                            api_key,
-                            {
-                              id,
-                              api_key,
-                              name,
-                              supportedFields,
-                            },
-                          ];
-                        },
-                      ),
-                    ),
-                  )
-                : [];
-
-              return {
-                id: field.id,
-                api_key: field.api_key,
-                label: field.label,
-                type: field.field_type,
-                supportedFields,
-              };
-            }),
-          );
-
-          if (linkedFields) {
-            console.log("related fields", linkedFields);
-            setRelatedFields(
-              Object.fromEntries(
-                linkedFields.map((model) => [model.api_key, model]),
-              ),
+            const relatedModels = relatedModelIds.map(
+              (id) => allItemTypesById[id]!,
             );
+
+            const relatedModelsByApiKey = Object.fromEntries(
+              relatedModels.map((model) => [
+                model.attributes.api_key,
+                {
+                  model,
+                  fields: Object.fromEntries(
+                    getSupportedFields(model.id).map((field) => [
+                      field.attributes.api_key,
+                      field,
+                    ]),
+                  ),
+                },
+              ]),
+            );
+
+            return [
+              [
+                field.attributes.api_key,
+                { ...field, relatedModels: relatedModelsByApiKey },
+              ],
+            ];
           }
-        }
 
-        const mostRecentRecord = await cmaClient.items.list({
-          filter: {
-            type: modelApiKey,
-          },
-          page: {
-            limit: 1,
-          },
-          order_by: "_updated_at_DESC",
-        });
-
-        if (mostRecentRecord?.[0]) {
-          setMostRecentRecordOfModel(mostRecentRecord[0]);
+          default:
+            return [[field.attributes.api_key, field]];
         }
-      } catch (error) {
-        console.error(error);
-      }
-    })();
-  }, [modelApiKey]);
+      }),
+    );
+  }, [currentModelId, allFieldsById]);
 
   return (
     <Canvas ctx={ctx} noAutoResizer={false}>
-      <ul>
-        {supportedFields.map(({ api_key, label, field_type }) => {
-          switch (field_type) {
-            case "link":
-
-            case "string":
-            default:
-              return (
-                <li key={api_key}>
-                  <code>{api_key}</code> ({label}) - e.g.,{" "}
-                  <em> {JSON.stringify(mostRecentRecordOfModel?.[api_key])}</em>
-                </li>
-              );
-          }
-        })}
-      </ul>
-      <DebugTree data={supportedFields} />
-      <DebugTree data={relatedFields} />
+      <DebugTree data={{ currentModelFields }} />
     </Canvas>
   );
 };
