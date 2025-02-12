@@ -4,5 +4,11 @@
   span {
     font-size: 125%;
   }
+}
 
+.templateString {
+
+  .templateField {
+    background: var(--light-color);
+  }
 }
