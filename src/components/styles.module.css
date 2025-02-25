@@ -1,7 +1,3 @@
-.container {
-    display: flex
-}
-
 .clickableSection {
     cursor: pointer;
     margin-top: 1em;
@@ -11,15 +7,29 @@
     }
 }
 
+.container {
+}
+
+
 .templateField {
 
-    flex-grow: 1;
-
     .mention {
-        background: yellow; /* Fallback */
-        background: var(--light-color); /* Prefer user-defined color from the Dato theme, if we can */
+        background: var(--light-color);
     }
 
+}
+
+.templateField__suggestions {
+    z-index: 99999 !important;
+    padding: 0.5em;
+    overflow-y: scroll;
+    max-height: 75px;
+    outline: 1px solid var(--light-color);
+}
+
+.templateField__suggestions__item--focused {
+    background: var(--light-color);
+    color: black;
 }
 
 .templateHint {

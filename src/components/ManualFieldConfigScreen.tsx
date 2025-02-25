@@ -17,7 +17,7 @@ import { cmaClient } from "../utils/cmaClient.ts";
 import type { Item } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
 import slugify from "@sindresorhus/slugify";
 import { DebugTree } from "../utils/DebugTree.tsx";
-import { intersectionOfArrays } from "../utils/intersectionOfArrays.ts";
+import { extractLocalizedString } from "../utils/extractLocalizedString.ts";
 
 const SUPPORTED_FIELD_TYPES: readonly Field["attributes"]["field_type"][] = [
   "string",
@@ -73,6 +73,8 @@ export const ManualFieldConfigScreen = ({
   );
   const [exampleRecord, setExampleRecord] = useState<Item>();
   const [isDebugOpen, setIsDebugOpen] = useState<boolean>(false);
+  const [relatedRecords, setRelatedRecords] = useState<Item[]>([]);
+
   const isLoading = useMemo<boolean>(() => {
     if (!exampleRecord) {
       return true;
@@ -93,8 +95,13 @@ export const ManualFieldConfigScreen = ({
           order_by: "_updated_at_DESC",
         });
 
-        if (response) {
-          setExampleRecord(response[0]);
+        if (response?.[0]) {
+          const record = response[0];
+          const relatedRecords = await cmaClient.items.references(record.id);
+          setRelatedRecords(relatedRecords);
+          setExampleRecord(record);
+        } else {
+          setExampleRecord(undefined);
         }
       } catch (error) {
         console.error(error);
@@ -175,33 +182,20 @@ export const ManualFieldConfigScreen = ({
         switch (field?.attributes?.field_type) {
           case "link":
             if (field.relatedModels) {
-              const allRelatedModelFields = Object.values(
+              const allRelatedModelFields = Object.entries(
                 field.relatedModels,
-              ).map((model) => Object.values(model.fields));
-
-              const allRelatedFieldNames = allRelatedModelFields.map((model) =>
-                model.map((field) => field.attributes.api_key),
+              ).flatMap(([modelName, model]) =>
+                Object.values(model.fields).map((field) => ({
+                  id: `${model.model.id}.${field.id}`, // Here we want the related item type ID, not just the field ID
+                  display: `${rootFieldName}.${modelName}.${field.attributes.api_key}`,
+                  field: field,
+                })),
               );
 
-              const fieldNamesInCommon: string[] =
-                intersectionOfArrays(allRelatedFieldNames);
-
-              console.log("intersected", fieldNamesInCommon);
-
-              return fieldNamesInCommon.flatMap((fieldName) =>
-                Object.entries(field.relatedModels!).flatMap(
-                  ([modelName, model]) =>
-                    Object.values(model.fields)
-                      .filter((field) => field.attributes.api_key === fieldName)
-                      .map((field) => ({
-                        id: field.id,
-                        display: `${rootFieldName}.${modelName}.${field.attributes.api_key}`,
-                        field: field,
-                      })),
-                ),
-              );
+              return [...allRelatedModelFields];
+            } else {
+              return [];
             }
-            break;
 
           default:
             return [
@@ -238,55 +232,48 @@ export const ManualFieldConfigScreen = ({
       return undefined;
     }
     const regex = /\{(.+?)}/g;
-    const replacedString: string = templateString.replace(regex, (_, match) => {
-      const maybeResult = exampleRecord?.[match] as unknown;
+    const replacedString: string = templateString.replace(
+      regex,
+      (_, fieldName) => {
+        console.log("fieldName", fieldName);
 
-      console.log("locale", locale);
-      console.log("maybeResult", maybeResult);
+        const relatedItem = mentionableFields.find(
+          (field) => field.display === fieldName,
+        );
 
-      if (!maybeResult) {
-        return "undefined";
-      }
+        console.log("relatedItem", relatedItem);
 
-      switch (typeof maybeResult) {
-        case "string":
-          return maybeResult;
+        const relatedItemTypeId: string = relatedItem?.id?.toString() ?? "";
 
-        case "object":
-          // If it's an object, it might be localized. Try to find the first matching locale because we don't know what the actual fallback is.
-          // TODO let the user define fallback locales here
-          const closestLocale: string | undefined = Object.keys(
-            maybeResult,
-          ).find((key) => key.startsWith(locale));
+        // Process related fields like field.other_model.other_field
+        const splitFieldName: string[] = fieldName.split(".");
+        if (splitFieldName.length >= 2) {
+          console.log("relatedItemTypeId", relatedItemTypeId);
+          const fieldInThisModel = splitFieldName[0];
+          const fieldInRelatedModel = splitFieldName[splitFieldName.length - 1];
+          const idOfRelatedRecord = exampleRecord?.[fieldInThisModel];
 
-          console.log("closest locale", closestLocale);
-          if (!closestLocale) {
-            return "undefined-locale";
-          }
+          const relatedRecord = relatedRecords.find(
+            (record) =>
+              record.id === idOfRelatedRecord &&
+              (!relatedItemTypeId ||
+                relatedItemTypeId.startsWith(record.item_type.id)),
+          );
 
-          const maybeStringFromClosestLocale: unknown | undefined =
-            (maybeResult as Record<string, unknown>)[closestLocale] ??
-            undefined;
+          console.log("relatedRecord", relatedRecord);
+          const relatedData = relatedRecord?.[fieldInRelatedModel];
+          return extractLocalizedString(relatedData, locale);
+        }
 
-          console.log("maybeString", maybeStringFromClosestLocale);
+        const maybeResult = exampleRecord?.[fieldName] as unknown;
 
-          if (
-            !!maybeStringFromClosestLocale &&
-            typeof maybeStringFromClosestLocale === "string"
-          ) {
-            if (maybeStringFromClosestLocale.length === 0) {
-              return "EMPTY";
-            }
+        if (!maybeResult) {
+          return "";
+        }
 
-            return maybeStringFromClosestLocale;
-          } else {
-            return "UNKNOWN";
-          }
-
-        default:
-          return JSON.stringify(maybeResult);
-      }
-    });
+        return extractLocalizedString(maybeResult, locale);
+      },
+    );
     console.log(replacedString);
     return slugify(replacedString);
   }, [templateString, exampleRecord]);
@@ -295,14 +282,16 @@ export const ManualFieldConfigScreen = ({
     <Canvas ctx={ctx} noAutoResizer={false}>
       <Section title={"Template String"}>
         <span>
-          Enter a filename template using {"{}"} for fields. Do not add an
-          extension (like .jpg or .gif):
+          Enter a filename template using {"{}"} for fields and space as
+          separator. Do not add an extension (like .jpg or .gif). Do not use
+          dashes or underscores.
         </span>
         <div className={s.container}>
           <MentionsInput
             value={templateString}
             onChange={handleTemplateStringChange}
-            className={s.templateField}
+            className={"templateField"}
+            classNames={s}
             singleLine={true}
             placeholder={"e.g. {shopify_product_handle}-{fieldname}-othertext"}
           >
@@ -314,28 +303,28 @@ export const ManualFieldConfigScreen = ({
               displayTransform={(_, display) => `{${display}}`}
             />
           </MentionsInput>
-          <div className={s.extension}>.jpg</div>
         </div>
         <div className={s.templateHint}>
-          <>
-            Example output:
-            <br />
-            {isLoading && (
-              <span>
-                {" "}
-                <Spinner size={18} />
-                Loading, please wait...
-              </span>
-            )}
-            {!isLoading && exampleString && (
-              <>
-                <span className={s.example}>{exampleString}</span>.jpg
-              </>
-            )}
-            {!isLoading && !exampleString && (
-              <>None yet. Enter a template first.</>
-            )}
-          </>
+          Example output:
+          <br />
+          {isLoading && (
+            <span>
+              {" "}
+              <Spinner size={18} />
+              Loading, please wait...
+            </span>
+          )}
+          {!isLoading &&
+            exampleString?.trim().length === 0 &&
+            "(Template produces no visible text)"}
+          {!isLoading && exampleString !== undefined && (
+            <>
+              <span className={s.example}>{exampleString}</span>-abcdef.jpg
+            </>
+          )}
+          {!isLoading &&
+            !templateString &&
+            "(None yet. Enter a template first.)"}
         </div>
       </Section>
 
@@ -347,6 +336,7 @@ export const ManualFieldConfigScreen = ({
         }}
       >
         <DebugTree data={{ exampleRecord }} />
+        <DebugTree data={{ relatedRecords }} />
         <DebugTree data={{ mentionableFields }} />
         <DebugTree data={{ currentModelFields }} />
       </Section>
