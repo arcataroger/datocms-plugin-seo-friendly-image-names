@@ -39,7 +39,7 @@ interface SuggestionDataItemWithMetadata extends SuggestionDataItem {
   field: Field;
 }
 
-type PluginParams = {
+export type PluginParams = {
   templateString?: string;
 };
 

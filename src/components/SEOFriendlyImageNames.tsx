@@ -7,6 +7,8 @@ import type {
 import { useEffect, useMemo, useState } from "react";
 import s from "./styles.module.css";
 import { cmaClient } from "../utils/cmaClient.ts";
+import type { PluginParams } from "./ManualFieldConfigScreen.tsx";
+import { extractLocalizedString } from "../utils/extractLocalizedString.ts";
 
 // Borrowing a typedef from the plugin SDK. This is what our asset gallery returns in formValues
 type AssetGalleryMetadata = NonNullable<
@@ -57,7 +59,71 @@ export const SEOFriendlyImageNames = ({
 }) => {
   /** Basic setup **/
   // These are provided to us by the plugin SDK. They are passed from main.tsx.
-  const { formValues, fieldPath } = ctx;
+  const {
+    formValues,
+    fieldPath,
+    parameters,
+    ui: { locale },
+  } = ctx;
+
+  const { templateString } = parameters as PluginParams;
+
+  if (!templateString) {
+    return (
+      <Canvas ctx={ctx}>
+        <p>No template string defined. Please configure in field settings.</p>
+      </Canvas>
+    );
+  }
+
+  const templateFields = useMemo<Map<string, string>>(() => {
+    const regex = /\{(.+?)}/g;
+    const templateMatches = templateString.matchAll(regex);
+    let parsedFields = new Map<string, string>();
+    for (const match of templateMatches) {
+      const fieldName = match[1];
+
+      const maybeMultiPartFieldName = fieldName.split(".");
+      if (maybeMultiPartFieldName.length > 1) {
+        try {
+          (async () => {
+            const fieldNameInThisModel = maybeMultiPartFieldName[0];
+            const fieldNameInRelatedModel =
+              maybeMultiPartFieldName[maybeMultiPartFieldName.length - 1];
+            const relatedItemId = formValues[fieldNameInThisModel];
+            if (relatedItemId && typeof relatedItemId == "string") {
+              const relatedRecord = await cmaClient.items.find(relatedItemId);
+              const relatedFieldData = relatedRecord[fieldNameInRelatedModel];
+              const maybeRelatedString = extractLocalizedString(
+                relatedFieldData,
+                locale,
+              );
+
+              if (maybeRelatedString) {
+                parsedFields.set(fieldName, maybeRelatedString);
+              } else {
+                parsedFields.set(fieldName, "");
+              }
+            }
+          })();
+        } catch (error) {
+          parsedFields.set(fieldName, "");
+          console.error("Error fetching related record data", error);
+        }
+      } else {
+        const rawData = formValues[fieldName];
+        const data = extractLocalizedString(rawData, locale);
+
+        if (data) {
+          parsedFields.set(fieldName, data);
+        } else {
+          parsedFields.set(fieldName, "");
+        }
+      }
+    }
+
+    return parsedFields;
+  }, [templateString, formValues]);
 
   // The asset gallery images (or technically, just their metadata)
   const galleryItems = formValues[fieldPath] as AssetGalleryMetadata[];
