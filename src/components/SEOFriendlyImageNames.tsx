@@ -1,55 +1,26 @@
 import { Button, Canvas, Section, Spinner } from "datocms-react-ui";
 import type { NewUpload, RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import type {
-  Item,
-  Upload,
-} from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
-import { useEffect, useMemo, useState } from "react";
+import type { Upload } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import s from "./styles.module.css";
 import { cmaClient } from "../utils/cmaClient.ts";
-import type { PluginParams } from "./ManualFieldConfigScreen.tsx";
+import {
+  type PluginParams,
+  templateParsingRegex,
+} from "./ManualFieldConfigScreen.tsx";
 import { extractLocalizedString } from "../utils/extractLocalizedString.ts";
+import slugify from "@sindresorhus/slugify";
 
 // Borrowing a typedef from the plugin SDK. This is what our asset gallery returns in formValues
 type AssetGalleryMetadata = NonNullable<
   NewUpload["default_field_metadata"]
 >[string] & { upload_id: string };
-type CollectionRecord = Item & { product_type?: string };
 type ImageNeedingUpdate = {
   id: string;
   currentBasename: string;
   slugifiedBasename: string;
   ext: string;
   thumbnailSrc: string;
-};
-
-const slugifyProductType = (productType: string): string => {
-  // TODO replace this with a locale-aware slugify lib, but only if they want localized basenames
-
-  const slugified: string = productType
-    .toLocaleLowerCase("en-US")
-    .replace(/\s+/g, "-");
-
-  const pluralized = `${slugified}s`;
-
-  return pluralized;
-};
-
-const slugifyImageName = ({
-  productType,
-  productHandle,
-  imgMimeType,
-  numberSuffix,
-}: {
-  productType: string;
-  productHandle: string;
-  imgMimeType?: string;
-  numberSuffix: string | number;
-}): string => {
-  const mediaType: string = imgMimeType?.startsWith("video")
-    ? "video"
-    : "image";
-  return `${slugifyProductType(productType)}-${productHandle}-${mediaType}-${numberSuffix}`;
 };
 
 export const SEOFriendlyImageNames = ({
@@ -77,8 +48,7 @@ export const SEOFriendlyImageNames = ({
   }
 
   const templateFields = useMemo<Map<string, string>>(() => {
-    const regex = /\{(.+?)}/g;
-    const templateMatches = templateString.matchAll(regex);
+    const templateMatches = templateString.matchAll(templateParsingRegex);
     let parsedFields = new Map<string, string>();
     for (const match of templateMatches) {
       const fieldName = match[1];
@@ -125,31 +95,39 @@ export const SEOFriendlyImageNames = ({
     return parsedFields;
   }, [templateString, formValues]);
 
+  console.log("templateFields", templateFields);
+
+  const generateCorrectImageBaseName = useCallback(
+    ({
+      imgMimeType,
+      hash,
+    }: {
+      imgMimeType?: string;
+      hash: string | number;
+    }): string => {
+      const mediaType: string = imgMimeType?.startsWith("video")
+        ? "video"
+        : "image";
+
+      const replacedTemplateString = templateString.replace(
+        templateParsingRegex,
+        (_, fieldname) => templateFields.get(fieldname) ?? "",
+      );
+
+      console.log("replaced template", replacedTemplateString);
+
+      return slugify(`${replacedTemplateString} ${mediaType} ${hash}`);
+    },
+    [templateString, templateFields],
+  );
+
   // The asset gallery images (or technically, just their metadata)
   const galleryItems = formValues[fieldPath] as AssetGalleryMetadata[];
 
-  // Shopify product handle
-  const productHandle = formValues["shopify_product_handle"] as string;
-
-  // Shopify collection, which we'll need to look up the product category
-  const collectionId = formValues["collection"] as string;
-
   const [images, setImages] = useState<Upload[]>([]);
-  const [collection, setCollection] = useState<CollectionRecord | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingMessage, setLoadingMessage] = useState<string | null>();
   const [isSectionOpen, setIsSectionOpen] = useState<boolean>(false);
-
-  const productType = useMemo(() => {
-    if (!collection) return "";
-
-    if (collection["product_type"]) {
-      return collection["product_type"];
-    } else {
-      console.warn(`Product type not found in collection ${collectionId}`);
-      return "";
-    }
-  }, [collection]);
 
   /** Fetch needed data from the CMA and update our local state **/
 
@@ -184,14 +162,6 @@ export const SEOFriendlyImageNames = ({
   useEffect(() => {
     (async () => {
       try {
-        setIsLoading(true);
-        // Get the product type from the collection Id
-        setLoadingMessage("Fetching product category...");
-        const collection = await cmaClient.items.find(collectionId);
-        if (collection) {
-          setCollection(collection);
-        }
-
         // Get existing image information
         if (galleryItems.length >= 1) {
           await fetchImageData();
@@ -203,7 +173,7 @@ export const SEOFriendlyImageNames = ({
         setLoadingMessage(null);
       }
     })();
-  }, [collectionId, galleryItems]);
+  }, [galleryItems]);
 
   /** Identify images needing a basename update (basename is just the filename without extension, because that's what the CMA wants) **/
 
@@ -211,15 +181,12 @@ export const SEOFriendlyImageNames = ({
   const updatedImageNames = useMemo<string[]>(
     () =>
       images.map((img) =>
-        slugifyImageName({
-          productType,
-          productHandle,
+        generateCorrectImageBaseName({
           imgMimeType: img.mime_type ?? undefined,
-          // numberSuffix: index + 1 // This makes it pretty confusing when they are reordered in the gallery
-          numberSuffix: img.md5.slice(0, 5), // We can use a shortened hash instead to better keep track of them
+          hash: img.md5.slice(0, 5), // We can use a shortened hash instead to better keep track of them
         }),
       ),
-    [images],
+    [images, generateCorrectImageBaseName],
   );
 
   // Calculate which images still need the updated names
@@ -311,7 +278,7 @@ export const SEOFriendlyImageNames = ({
         });
         await ctx.notice(`Updated to ${slugifiedBasename}.${ext}`);
       } catch (error) {
-        console.log(error);
+        console.error(error);
         await ctx.alert(`Failed to update ${currentBasename}.${ext}: ${error}`);
       }
     }
@@ -362,7 +329,7 @@ export const SEOFriendlyImageNames = ({
           `Successfully updated ${imagesNeedingUpdate.length} files`,
         );
       } catch (error) {
-        console.log(error);
+        console.error(error);
         await ctx.alert(`Bulk update failed: ${error}`);
       } finally {
         setIsLoading(false);

@@ -53,6 +53,8 @@ type CurrentModelInfo = Record<
   Field & { relatedModels?: Record<string, RelatedModel> }
 >;
 
+export const templateParsingRegex = /\{(.+?)}/g;
+
 export const ManualFieldConfigScreen = ({
   ctx,
 }: {
@@ -231,24 +233,18 @@ export const ManualFieldConfigScreen = ({
     if (!exampleRecord) {
       return undefined;
     }
-    const regex = /\{(.+?)}/g;
     const replacedString: string = templateString.replace(
-      regex,
+      templateParsingRegex,
       (_, fieldName) => {
-        console.log("fieldName", fieldName);
-
         const relatedItem = mentionableFields.find(
           (field) => field.display === fieldName,
         );
-
-        console.log("relatedItem", relatedItem);
 
         const relatedItemTypeId: string = relatedItem?.id?.toString() ?? "";
 
         // Process related fields like field.other_model.other_field
         const splitFieldName: string[] = fieldName.split(".");
         if (splitFieldName.length >= 2) {
-          console.log("relatedItemTypeId", relatedItemTypeId);
           const fieldInThisModel = splitFieldName[0];
           const fieldInRelatedModel = splitFieldName[splitFieldName.length - 1];
           const idOfRelatedRecord = exampleRecord?.[fieldInThisModel];
@@ -260,7 +256,6 @@ export const ManualFieldConfigScreen = ({
                 relatedItemTypeId.startsWith(record.item_type.id)),
           );
 
-          console.log("relatedRecord", relatedRecord);
           const relatedData = relatedRecord?.[fieldInRelatedModel];
           return extractLocalizedString(relatedData, locale);
         }
@@ -274,7 +269,6 @@ export const ManualFieldConfigScreen = ({
         return extractLocalizedString(maybeResult, locale);
       },
     );
-    console.log(replacedString);
     return slugify(replacedString);
   }, [templateString, exampleRecord]);
 
@@ -283,8 +277,7 @@ export const ManualFieldConfigScreen = ({
       <Section title={"Template String"}>
         <span>
           Enter a filename template using {"{}"} for fields and space as
-          separator. Do not add an extension (like .jpg or .gif). Do not use
-          dashes or underscores.
+          separator. Do not include file type or extension.
         </span>
         <div className={s.container}>
           <MentionsInput
@@ -319,7 +312,8 @@ export const ManualFieldConfigScreen = ({
             "(Template produces no visible text)"}
           {!isLoading && exampleString !== undefined && (
             <>
-              <span className={s.example}>{exampleString}</span>-abcdef.jpg
+              <span className={s.example}>{exampleString}</span>
+              -image-abcdef.jpg
             </>
           )}
           {!isLoading &&
