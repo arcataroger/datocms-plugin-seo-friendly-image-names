@@ -2,7 +2,7 @@ import {
   type Field,
   RenderManualFieldExtensionConfigScreenCtx,
 } from "datocms-plugin-sdk";
-import { Canvas, Section } from "datocms-react-ui";
+import { Canvas, Section, Spinner } from "datocms-react-ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Mention,
@@ -37,6 +37,10 @@ interface SuggestionDataItemWithMetadata extends SuggestionDataItem {
   field: Field;
 }
 
+type PluginParams = {
+  templateString?: string;
+};
+
 export const ManualFieldConfigScreen = ({
   ctx,
 }: {
@@ -47,11 +51,22 @@ export const ManualFieldConfigScreen = ({
     fields: allFieldsById,
     itemTypes: allItemTypesById,
     ui: { locale },
+    setParameters,
   } = ctx;
 
-  const [templateString, setTemplateString] = useState<string>();
+  const { parameters } = ctx as { parameters: PluginParams };
+
+  const [templateString, setTemplateString] = useState<string>(
+    parameters.templateString ?? "",
+  );
   const [exampleRecord, setExampleRecord] = useState<Item>();
   const [isDebugOpen, setIsDebugOpen] = useState<boolean>(false);
+  const isLoading = useMemo<boolean>(() => {
+    if (!exampleRecord) {
+      return true;
+    }
+    return false;
+  }, [exampleRecord]);
 
   useEffect(() => {
     (async () => {
@@ -101,38 +116,38 @@ export const ManualFieldConfigScreen = ({
     return supportedFieldsInCurrentModel.flatMap((field) => {
       switch (field?.attributes?.field_type) {
         /*        case "link": {
-                                                  const validators = field?.attributes.validators as Validators;
-                                                  const relatedModelIds = validators?.item_item_type?.item_types;
-                                                  if (!relatedModelIds) {
-                                                    return [];
-                                                  }
-                
-                                                  const relatedModels = relatedModelIds.map(
-                                                    (id) => allItemTypesById[id]!,
-                                                  );
-                
-                                                  const relatedModelsByApiKey = Object.fromEntries(
-                                                    relatedModels.map((model) => [
-                                                      model.attributes.api_key,
-                                                      {
-                                                        model,
-                                                        fields: Object.fromEntries(
-                                                          getSupportedFields(model.id).map((field) => [
-                                                            field.attributes.api_key,
-                                                            field,
-                                                          ]),
-                                                        ),
-                                                      },
-                                                    ]),
-                                                  );
-                
-                                                  return [
-                                                    [
-                                                      field.attributes.api_key,
-                                                      { ...field, relatedModels: relatedModelsByApiKey },
-                                                    ],
-                                                  ];
-                                                }*/
+                                                          const validators = field?.attributes.validators as Validators;
+                                                          const relatedModelIds = validators?.item_item_type?.item_types;
+                                                          if (!relatedModelIds) {
+                                                            return [];
+                                                          }
+                        
+                                                          const relatedModels = relatedModelIds.map(
+                                                            (id) => allItemTypesById[id]!,
+                                                          );
+                        
+                                                          const relatedModelsByApiKey = Object.fromEntries(
+                                                            relatedModels.map((model) => [
+                                                              model.attributes.api_key,
+                                                              {
+                                                                model,
+                                                                fields: Object.fromEntries(
+                                                                  getSupportedFields(model.id).map((field) => [
+                                                                    field.attributes.api_key,
+                                                                    field,
+                                                                  ]),
+                                                                ),
+                                                              },
+                                                            ]),
+                                                          );
+                        
+                                                          return [
+                                                            [
+                                                              field.attributes.api_key,
+                                                              { ...field, relatedModels: relatedModelsByApiKey },
+                                                            ],
+                                                          ];
+                                                        }*/
 
         default:
           return [
@@ -189,6 +204,14 @@ export const ManualFieldConfigScreen = ({
     );
   }, [currentModelId, allFieldsById]);
 
+  useEffect(() => {
+    if (templateString) {
+      setParameters({
+        templateString,
+      } as PluginParams);
+    }
+  }, [templateString]);
+
   const handleTemplateStringChange: OnChangeHandlerFunc = (
     _event,
     newValue,
@@ -202,6 +225,10 @@ export const ManualFieldConfigScreen = ({
     if (!templateString?.length) {
       return undefined;
     }
+
+    if (!exampleRecord) {
+      return undefined;
+    }
     const regex = /\{(.+?)}/g;
     const replacedString: string = templateString.replace(regex, (_, match) => {
       const maybeResult = exampleRecord?.[match] as unknown;
@@ -210,7 +237,7 @@ export const ManualFieldConfigScreen = ({
       console.log("maybeResult", maybeResult);
 
       if (!maybeResult) {
-        return "UNDEFINED";
+        return "undefined";
       }
 
       switch (typeof maybeResult) {
@@ -226,7 +253,7 @@ export const ManualFieldConfigScreen = ({
 
           console.log("closest locale", closestLocale);
           if (!closestLocale) {
-            return "UNDEFINED";
+            return "undefined-locale";
           }
 
           const maybeStringFromClosestLocale: unknown | undefined =
@@ -254,7 +281,7 @@ export const ManualFieldConfigScreen = ({
     });
     console.log(replacedString);
     return slugify(replacedString);
-  }, [templateString]);
+  }, [templateString, exampleRecord]);
 
   return (
     <Canvas ctx={ctx} noAutoResizer={false}>
@@ -282,13 +309,25 @@ export const ManualFieldConfigScreen = ({
           <div className={s.extension}>.jpg</div>
         </div>
         <div className={s.templateHint}>
-          {!!exampleString && (
-            <>
-              Example output:
-              <br />
-              {<span className={s.example}>{exampleString}</span>}.jpg
-            </>
-          )}
+          <>
+            Example output:
+            <br />
+            {isLoading && (
+              <span>
+                {" "}
+                <Spinner size={18} />
+                Loading, please wait...
+              </span>
+            )}
+            {!isLoading && exampleString && (
+              <>
+                <span className={s.example}>{exampleString}</span>.jpg
+              </>
+            )}
+            {!isLoading && !exampleString && (
+              <>None yet. Enter a template first.</>
+            )}
+          </>
         </div>
       </Section>
 
