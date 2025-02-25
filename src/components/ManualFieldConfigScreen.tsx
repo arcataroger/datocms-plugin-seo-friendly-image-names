@@ -77,11 +77,8 @@ export const ManualFieldConfigScreen = ({
   const [isDebugOpen, setIsDebugOpen] = useState<boolean>(false);
   const [relatedRecords, setRelatedRecords] = useState<Item[]>([]);
 
-  const isLoading = useMemo<boolean>(() => {
-    if (!exampleRecord) {
-      return true;
-    }
-    return false;
+  const isLoadingExampleRecord = useMemo<boolean>(() => {
+    return !exampleRecord;
   }, [exampleRecord]);
 
   useEffect(() => {
@@ -300,25 +297,23 @@ export const ManualFieldConfigScreen = ({
         <div className={s.templateHint}>
           Example output:
           <br />
-          {isLoading && (
+          {!templateString && "(None yet. Enter a template first.)"}
+          {templateString && isLoadingExampleRecord && (
             <span>
               {" "}
               <Spinner size={18} />
               Loading, please wait...
             </span>
           )}
-          {!isLoading &&
+          {!isLoadingExampleRecord &&
             exampleString?.trim().length === 0 &&
             "(Template produces no visible text)"}
-          {!isLoading && exampleString !== undefined && (
+          {!isLoadingExampleRecord && exampleString !== undefined && (
             <>
               <span className={s.example}>{exampleString}</span>
               -image-abcdef.jpg
             </>
           )}
-          {!isLoading &&
-            !templateString &&
-            "(None yet. Enter a template first.)"}
         </div>
       </Section>
 
