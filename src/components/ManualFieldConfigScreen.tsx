@@ -1,5 +1,6 @@
 import {
   type Field,
+  type ItemType,
   RenderManualFieldExtensionConfigScreenCtx,
 } from "datocms-plugin-sdk";
 import { Canvas, Section, Spinner } from "datocms-react-ui";
@@ -16,6 +17,7 @@ import { cmaClient } from "../utils/cmaClient.ts";
 import type { Item } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
 import slugify from "@sindresorhus/slugify";
 import { DebugTree } from "../utils/DebugTree.tsx";
+import { intersectionOfArrays } from "../utils/intersectionOfArrays.ts";
 
 const SUPPORTED_FIELD_TYPES: readonly Field["attributes"]["field_type"][] = [
   "string",
@@ -40,6 +42,16 @@ interface SuggestionDataItemWithMetadata extends SuggestionDataItem {
 type PluginParams = {
   templateString?: string;
 };
+
+type RelatedModel = {
+  model: ItemType;
+  fields: Record<string, Field>;
+};
+
+type CurrentModelInfo = Record<
+  string,
+  Field & { relatedModels?: Record<string, RelatedModel> }
+>;
 
 export const ManualFieldConfigScreen = ({
   ctx,
@@ -110,54 +122,7 @@ export const ManualFieldConfigScreen = ({
     [allFieldsById, SUPPORTED_FIELD_TYPES],
   );
 
-  const mentionableFields = useMemo<SuggestionDataItemWithMetadata[]>(() => {
-    const supportedFieldsInCurrentModel = getSupportedFields(currentModelId);
-
-    return supportedFieldsInCurrentModel.flatMap((field) => {
-      switch (field?.attributes?.field_type) {
-        /*        case "link": {
-                                                          const validators = field?.attributes.validators as Validators;
-                                                          const relatedModelIds = validators?.item_item_type?.item_types;
-                                                          if (!relatedModelIds) {
-                                                            return [];
-                                                          }
-                        
-                                                          const relatedModels = relatedModelIds.map(
-                                                            (id) => allItemTypesById[id]!,
-                                                          );
-                        
-                                                          const relatedModelsByApiKey = Object.fromEntries(
-                                                            relatedModels.map((model) => [
-                                                              model.attributes.api_key,
-                                                              {
-                                                                model,
-                                                                fields: Object.fromEntries(
-                                                                  getSupportedFields(model.id).map((field) => [
-                                                                    field.attributes.api_key,
-                                                                    field,
-                                                                  ]),
-                                                                ),
-                                                              },
-                                                            ]),
-                                                          );
-                        
-                                                          return [
-                                                            [
-                                                              field.attributes.api_key,
-                                                              { ...field, relatedModels: relatedModelsByApiKey },
-                                                            ],
-                                                          ];
-                                                        }*/
-
-        default:
-          return [
-            { id: field.id, display: field.attributes.api_key, field: field },
-          ];
-      }
-    });
-  }, [currentModelId, allFieldsById]);
-
-  const currentModelFields: { [k: string]: Field } = useMemo(() => {
+  const currentModelFields = useMemo<CurrentModelInfo>(() => {
     const supportedFieldsInCurrentModel = getSupportedFields(currentModelId);
 
     return Object.fromEntries(
@@ -203,6 +168,49 @@ export const ManualFieldConfigScreen = ({
       }),
     );
   }, [currentModelId, allFieldsById]);
+
+  const mentionableFields = useMemo<SuggestionDataItemWithMetadata[]>(() => {
+    return Object.entries(currentModelFields).flatMap(
+      ([rootFieldName, field]) => {
+        switch (field?.attributes?.field_type) {
+          case "link":
+            if (field.relatedModels) {
+              const allRelatedModelFields = Object.values(
+                field.relatedModels,
+              ).map((model) => Object.values(model.fields));
+
+              const allRelatedFieldNames = allRelatedModelFields.map((model) =>
+                model.map((field) => field.attributes.api_key),
+              );
+
+              const fieldNamesInCommon: string[] =
+                intersectionOfArrays(allRelatedFieldNames);
+
+              console.log("intersected", fieldNamesInCommon);
+
+              return fieldNamesInCommon.flatMap((fieldName) =>
+                Object.entries(field.relatedModels!).flatMap(
+                  ([modelName, model]) =>
+                    Object.values(model.fields)
+                      .filter((field) => field.attributes.api_key === fieldName)
+                      .map((field) => ({
+                        id: field.id,
+                        display: `${rootFieldName}.${modelName}.${field.attributes.api_key}`,
+                        field: field,
+                      })),
+                ),
+              );
+            }
+            break;
+
+          default:
+            return [
+              { id: field.id, display: field.attributes.api_key, field: field },
+            ];
+        }
+      },
+    );
+  }, [currentModelFields]);
 
   useEffect(() => {
     if (templateString) {
