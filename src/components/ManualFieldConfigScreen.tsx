@@ -15,6 +15,7 @@ import s from "./styles.module.css";
 import "datocms-react-ui/styles.css";
 import { cmaClient } from "../utils/cmaClient.ts";
 import type { Item } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
+import slugify from "@sindresorhus/slugify";
 
 const SUPPORTED_FIELD_TYPES: readonly Field["attributes"]["field_type"][] = [
   "string",
@@ -45,6 +46,7 @@ export const ManualFieldConfigScreen = ({
     itemType: { id: currentModelId },
     fields: allFieldsById,
     itemTypes: allItemTypesById,
+    ui: { locale },
   } = ctx;
 
   const [templateString, setTemplateString] = useState<string>();
@@ -98,38 +100,38 @@ export const ManualFieldConfigScreen = ({
     return supportedFieldsInCurrentModel.flatMap((field) => {
       switch (field?.attributes?.field_type) {
         /*        case "link": {
-          const validators = field?.attributes.validators as Validators;
-          const relatedModelIds = validators?.item_item_type?.item_types;
-          if (!relatedModelIds) {
-            return [];
-          }
-
-          const relatedModels = relatedModelIds.map(
-            (id) => allItemTypesById[id]!,
-          );
-
-          const relatedModelsByApiKey = Object.fromEntries(
-            relatedModels.map((model) => [
-              model.attributes.api_key,
-              {
-                model,
-                fields: Object.fromEntries(
-                  getSupportedFields(model.id).map((field) => [
-                    field.attributes.api_key,
-                    field,
-                  ]),
-                ),
-              },
-            ]),
-          );
-
-          return [
-            [
-              field.attributes.api_key,
-              { ...field, relatedModels: relatedModelsByApiKey },
-            ],
-          ];
-        }*/
+                                  const validators = field?.attributes.validators as Validators;
+                                  const relatedModelIds = validators?.item_item_type?.item_types;
+                                  if (!relatedModelIds) {
+                                    return [];
+                                  }
+                
+                                  const relatedModels = relatedModelIds.map(
+                                    (id) => allItemTypesById[id]!,
+                                  );
+                
+                                  const relatedModelsByApiKey = Object.fromEntries(
+                                    relatedModels.map((model) => [
+                                      model.attributes.api_key,
+                                      {
+                                        model,
+                                        fields: Object.fromEntries(
+                                          getSupportedFields(model.id).map((field) => [
+                                            field.attributes.api_key,
+                                            field,
+                                          ]),
+                                        ),
+                                      },
+                                    ]),
+                                  );
+                
+                                  return [
+                                    [
+                                      field.attributes.api_key,
+                                      { ...field, relatedModels: relatedModelsByApiKey },
+                                    ],
+                                  ];
+                                }*/
 
         default:
           return [
@@ -200,12 +202,58 @@ export const ManualFieldConfigScreen = ({
       return undefined;
     }
     const regex = /\{(.+?)}/g;
-    const replacedString = templateString.replace(
-      regex,
-      (_, match) => (exampleRecord?.[match] as string) ?? "",
-    );
+    const replacedString: string = templateString.replace(regex, (_, match) => {
+      const maybeResult = exampleRecord?.[match] as unknown;
+
+      console.log("locale", locale);
+      console.log("maybeResult", maybeResult);
+
+      if (!maybeResult) {
+        return "UNDEFINED";
+      }
+
+      switch (typeof maybeResult) {
+        case "string":
+          return maybeResult;
+
+        case "object":
+          // If it's an object, it might be localized. Try to find the first matching locale because we don't know what the actual fallback is.
+          // TODO let the user define fallback locales here
+          const closestLocale: string | undefined = Object.keys(
+            maybeResult,
+          ).find((key) => key.startsWith(locale));
+
+          console.log("closest locale", closestLocale);
+          if (!closestLocale) {
+            return "UNDEFINED";
+          }
+
+          const maybeStringFromClosestLocale: string | undefined =
+            ((maybeResult as Record<string, unknown>)[
+              closestLocale
+            ] as string) ?? undefined;
+
+          console.log("maybeString", maybeStringFromClosestLocale);
+
+          if (
+            !!maybeStringFromClosestLocale &&
+            typeof maybeStringFromClosestLocale === "string"
+          ) {
+            if (maybeStringFromClosestLocale.length === 0) {
+              return "EMPTY";
+            }
+
+            return maybeStringFromClosestLocale;
+          } else {
+            return "UNKNOWN";
+          }
+
+        default:
+          return JSON.stringify(maybeResult);
+      }
+    });
     console.log(replacedString);
-    return replacedString;
+    return slugify(replacedString);
   }, [templateString]);
 
   return (
@@ -224,7 +272,9 @@ export const ManualFieldConfigScreen = ({
           displayTransform={(_, display) => `{${display}}`}
         />
       </MentionsInput>
-      <span>Example: {exampleString ?? "No example record found"}</span>
+      <span>
+        Example: {JSON.stringify(exampleString) ?? "No example record found"}
+      </span>
       <pre>{templateString}</pre>
       <DebugTree data={{ exampleRecord }} />
       <DebugTree data={{ mentionableFields }} />
