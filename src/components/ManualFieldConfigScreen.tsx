@@ -100,7 +100,12 @@ export const ManualFieldConfigScreen = ({
           setRelatedRecords(relatedRecords);
           setExampleRecord(record);
         } else {
+          setRelatedRecords([]);
           setExampleRecord(undefined);
+          await ctx.alert(
+            "Error: I could not find any example records to load. Check the plugin's API key permissions.",
+          );
+          console.error("No example record found", response);
         }
       } catch (error) {
         console.error(error);
