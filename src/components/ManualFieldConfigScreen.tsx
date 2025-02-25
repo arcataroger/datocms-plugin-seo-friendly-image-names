@@ -2,8 +2,7 @@ import {
   type Field,
   RenderManualFieldExtensionConfigScreenCtx,
 } from "datocms-plugin-sdk";
-import { Canvas } from "datocms-react-ui";
-import { DebugTree } from "../utils/DebugTree.tsx";
+import { Canvas, Section } from "datocms-react-ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Mention,
@@ -16,6 +15,7 @@ import "datocms-react-ui/styles.css";
 import { cmaClient } from "../utils/cmaClient.ts";
 import type { Item } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
 import slugify from "@sindresorhus/slugify";
+import { DebugTree } from "../utils/DebugTree.tsx";
 
 const SUPPORTED_FIELD_TYPES: readonly Field["attributes"]["field_type"][] = [
   "string",
@@ -51,6 +51,7 @@ export const ManualFieldConfigScreen = ({
 
   const [templateString, setTemplateString] = useState<string>();
   const [exampleRecord, setExampleRecord] = useState<Item>();
+  const [isDebugOpen, setIsDebugOpen] = useState<boolean>(false);
 
   useEffect(() => {
     (async () => {
@@ -100,38 +101,38 @@ export const ManualFieldConfigScreen = ({
     return supportedFieldsInCurrentModel.flatMap((field) => {
       switch (field?.attributes?.field_type) {
         /*        case "link": {
-                                  const validators = field?.attributes.validators as Validators;
-                                  const relatedModelIds = validators?.item_item_type?.item_types;
-                                  if (!relatedModelIds) {
-                                    return [];
-                                  }
+                                                  const validators = field?.attributes.validators as Validators;
+                                                  const relatedModelIds = validators?.item_item_type?.item_types;
+                                                  if (!relatedModelIds) {
+                                                    return [];
+                                                  }
                 
-                                  const relatedModels = relatedModelIds.map(
-                                    (id) => allItemTypesById[id]!,
-                                  );
+                                                  const relatedModels = relatedModelIds.map(
+                                                    (id) => allItemTypesById[id]!,
+                                                  );
                 
-                                  const relatedModelsByApiKey = Object.fromEntries(
-                                    relatedModels.map((model) => [
-                                      model.attributes.api_key,
-                                      {
-                                        model,
-                                        fields: Object.fromEntries(
-                                          getSupportedFields(model.id).map((field) => [
-                                            field.attributes.api_key,
-                                            field,
-                                          ]),
-                                        ),
-                                      },
-                                    ]),
-                                  );
+                                                  const relatedModelsByApiKey = Object.fromEntries(
+                                                    relatedModels.map((model) => [
+                                                      model.attributes.api_key,
+                                                      {
+                                                        model,
+                                                        fields: Object.fromEntries(
+                                                          getSupportedFields(model.id).map((field) => [
+                                                            field.attributes.api_key,
+                                                            field,
+                                                          ]),
+                                                        ),
+                                                      },
+                                                    ]),
+                                                  );
                 
-                                  return [
-                                    [
-                                      field.attributes.api_key,
-                                      { ...field, relatedModels: relatedModelsByApiKey },
-                                    ],
-                                  ];
-                                }*/
+                                                  return [
+                                                    [
+                                                      field.attributes.api_key,
+                                                      { ...field, relatedModels: relatedModelsByApiKey },
+                                                    ],
+                                                  ];
+                                                }*/
 
         default:
           return [
@@ -228,10 +229,9 @@ export const ManualFieldConfigScreen = ({
             return "UNDEFINED";
           }
 
-          const maybeStringFromClosestLocale: string | undefined =
-            ((maybeResult as Record<string, unknown>)[
-              closestLocale
-            ] as string) ?? undefined;
+          const maybeStringFromClosestLocale: unknown | undefined =
+            (maybeResult as Record<string, unknown>)[closestLocale] ??
+            undefined;
 
           console.log("maybeString", maybeStringFromClosestLocale);
 
@@ -258,27 +258,51 @@ export const ManualFieldConfigScreen = ({
 
   return (
     <Canvas ctx={ctx} noAutoResizer={false}>
-      <MentionsInput
-        value={templateString}
-        onChange={handleTemplateStringChange}
-        className={s.templateString}
+      <Section title={"Template String"}>
+        <span>
+          Enter a filename template using {"{}"} for fields. Do not add an
+          extension (like .jpg or .gif):
+        </span>
+        <div className={s.container}>
+          <MentionsInput
+            value={templateString}
+            onChange={handleTemplateStringChange}
+            className={s.templateField}
+            singleLine={true}
+            placeholder={"e.g. {shopify_product_handle}-{fieldname}-othertext"}
+          >
+            <Mention
+              className={s.mention}
+              trigger="{"
+              data={mentionableFields}
+              markup={"{__display__}"}
+              displayTransform={(_, display) => `{${display}}`}
+            />
+          </MentionsInput>
+          <div className={s.extension}>.jpg</div>
+        </div>
+        <div className={s.templateHint}>
+          {!!exampleString && (
+            <>
+              Example output:
+              <br />
+              {<span className={s.example}>{exampleString}</span>}.jpg
+            </>
+          )}
+        </div>
+      </Section>
+
+      <Section
+        title="Debug"
+        collapsible={{
+          isOpen: isDebugOpen,
+          onToggle: () => setIsDebugOpen((prev) => !prev),
+        }}
       >
-        <Mention
-          className={s.templateField}
-          trigger="{"
-          data={mentionableFields}
-          // renderSuggestion={renderTemplateSuggestion}
-          markup={"{__display__}"}
-          displayTransform={(_, display) => `{${display}}`}
-        />
-      </MentionsInput>
-      <span>
-        Example: {JSON.stringify(exampleString) ?? "No example record found"}
-      </span>
-      <pre>{templateString}</pre>
-      <DebugTree data={{ exampleRecord }} />
-      <DebugTree data={{ mentionableFields }} />
-      <DebugTree data={{ currentModelFields }} />
+        <DebugTree data={{ exampleRecord }} />
+        <DebugTree data={{ mentionableFields }} />
+        <DebugTree data={{ currentModelFields }} />
+      </Section>
     </Canvas>
   );
 };

@@ -264,7 +264,12 @@ export const DebugTree = ({ data }: { data: unknown }) => {
       <TextField
         id="debugFilter"
         name="debugFilter"
-        label="Filter by key or value"
+        label={
+          <>
+            Filter <strong>{Object.keys(filteredData)?.[0] ?? ""}</strong> by
+            key or value
+          </>
+        }
         value={filterText}
         onChange={(value) => setFilterText(value)}
       />

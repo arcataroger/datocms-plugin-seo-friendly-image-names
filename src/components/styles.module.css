@@ -1,14 +1,38 @@
-.clickableSection {
-  cursor: pointer;
-  margin-top: 1em;
-  span {
-    font-size: 125%;
-  }
+.container {
+    display: flex
 }
 
-.templateString {
+.clickableSection {
+    cursor: pointer;
+    margin-top: 1em;
 
-  .templateField {
-    background: var(--light-color);
-  }
+    span {
+        font-size: 125%;
+    }
+}
+
+.templateField {
+
+    flex-grow: 1;
+
+    .mention {
+        background: yellow; /* Fallback */
+        background: var(--light-color); /* Prefer user-defined color from the Dato theme, if we can */
+    }
+
+}
+
+.templateHint {
+    margin: 1em 0;
+    color: grey;
+
+    .example {
+        font-weight: bold;
+        color: black;
+    }
+}
+
+.extension {
+    color: grey;
+    margin-left: 5px;
 }
