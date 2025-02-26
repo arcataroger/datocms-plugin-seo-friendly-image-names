@@ -92,7 +92,7 @@ export const SEOFriendlyImageNames = ({
     }
 
     fetchRecords();
-  }, [item, fields, itemType]);
+  }, [item, fields, itemType, formValues]);
 
   const templateFields = useMemo<Map<string, string>>(() => {
     const templateMatches = templateString.matchAll(templateParsingRegex);
