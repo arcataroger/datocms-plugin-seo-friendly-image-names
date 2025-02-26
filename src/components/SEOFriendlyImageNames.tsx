@@ -15,7 +15,6 @@ import type {
   ImageNeedingUpdate,
   PluginParams,
 } from "../types/types.ts";
-import { DebugTree } from "../utils/DebugTree.tsx";
 
 export const SEOFriendlyImageNames = ({
   ctx,
