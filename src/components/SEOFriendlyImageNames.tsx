@@ -1,27 +1,17 @@
 import { Button, Canvas, Section, Spinner } from "datocms-react-ui";
-import type { NewUpload, RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 import type { Upload } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import s from "./styles.module.css";
 import { cmaClient } from "../utils/cmaClient.ts";
-import {
-  type PluginParams,
-  templateParsingRegex,
-} from "./ManualFieldConfigScreen.tsx";
 import { extractLocalizedString } from "../utils/extractLocalizedString.ts";
 import slugify from "@sindresorhus/slugify";
-
-// Borrowing a typedef from the plugin SDK. This is what our asset gallery returns in formValues
-type AssetGalleryMetadata = NonNullable<
-  NewUpload["default_field_metadata"]
->[string] & { upload_id: string };
-type ImageNeedingUpdate = {
-  id: string;
-  currentBasename: string;
-  slugifiedBasename: string;
-  ext: string;
-  thumbnailSrc: string;
-};
+import { templateParsingRegex } from "../utils/utils.ts";
+import type {
+  AssetGalleryMetadata,
+  ImageNeedingUpdate,
+  PluginParams,
+} from "../types/types.ts";
 
 export const SEOFriendlyImageNames = ({
   ctx,

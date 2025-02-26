@@ -1,6 +1,5 @@
 import {
   type Field,
-  type ItemType,
   RenderManualFieldExtensionConfigScreenCtx,
 } from "datocms-plugin-sdk";
 import { Canvas, Section, Spinner } from "datocms-react-ui";
@@ -9,7 +8,6 @@ import {
   Mention,
   MentionsInput,
   type OnChangeHandlerFunc,
-  type SuggestionDataItem,
 } from "react-mentions";
 import s from "./styles.module.css";
 import "datocms-react-ui/styles.css";
@@ -18,6 +16,13 @@ import type { Item } from "@datocms/cma-client/dist/types/generated/SimpleSchema
 import slugify from "@sindresorhus/slugify";
 import { DebugTree } from "../utils/DebugTree.tsx";
 import { extractLocalizedString } from "../utils/extractLocalizedString.ts";
+import { templateParsingRegex } from "../utils/utils.ts";
+import type {
+  CurrentModelInfo,
+  PluginParams,
+  SuggestionDataItemWithMetadata,
+  Validators,
+} from "../types/types.ts";
 
 const SUPPORTED_FIELD_TYPES: readonly Field["attributes"]["field_type"][] = [
   "string",
@@ -26,34 +31,6 @@ const SUPPORTED_FIELD_TYPES: readonly Field["attributes"]["field_type"][] = [
   "float",
   "link",
 ];
-
-type Validators =
-  | {
-      item_item_type?: {
-        item_types: string[];
-      };
-    }
-  | undefined;
-
-interface SuggestionDataItemWithMetadata extends SuggestionDataItem {
-  field: Field;
-}
-
-export type PluginParams = {
-  templateString?: string;
-};
-
-type RelatedModel = {
-  model: ItemType;
-  fields: Record<string, Field>;
-};
-
-type CurrentModelInfo = Record<
-  string,
-  Field & { relatedModels?: Record<string, RelatedModel> }
->;
-
-export const templateParsingRegex = /\{(.+?)}/g;
 
 export const ManualFieldConfigScreen = ({
   ctx,

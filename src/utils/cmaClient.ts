@@ -3,7 +3,7 @@
 import { buildClient } from "@datocms/cma-client-browser";
 
 const accessToken = import.meta.env.VITE_DATOCMS_LIMITED_ACCESS_TOKEN;
-const env = import.meta.env.VITE_DATOCMS_ENVIRONMENT;
+const env = import.meta.env.VITE_DATOCMS_ENVIRONMENT ?? "main";
 
 // Initialize Dato CMA client
 export const cmaClient = buildClient({
