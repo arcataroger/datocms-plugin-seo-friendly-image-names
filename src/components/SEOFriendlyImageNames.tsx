@@ -1,6 +1,9 @@
 import { Button, Canvas, Section, Spinner } from "datocms-react-ui";
 import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import type { Upload } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
+import type {
+  Item,
+  Upload,
+} from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import s from "./styles.module.css";
 import { cmaClient } from "../utils/cmaClient.ts";
@@ -12,6 +15,7 @@ import type {
   ImageNeedingUpdate,
   PluginParams,
 } from "../types/types.ts";
+import { DebugTree } from "../utils/DebugTree.tsx";
 
 export const SEOFriendlyImageNames = ({
   ctx,
@@ -21,10 +25,13 @@ export const SEOFriendlyImageNames = ({
   /** Basic setup **/
   // These are provided to us by the plugin SDK. They are passed from main.tsx.
   const {
+    item,
     formValues,
     fieldPath,
     parameters,
     ui: { locale },
+    itemType,
+    fields,
   } = ctx;
 
   const { templateString } = parameters as PluginParams;
@@ -36,6 +43,57 @@ export const SEOFriendlyImageNames = ({
       </Canvas>
     );
   }
+
+  const [relatedRecords, setRelatedRecords] = useState<Item[]>([]);
+
+  useEffect(() => {
+    async function fetchRecords() {
+      try {
+        const currentRecordId = item?.id;
+        if (!currentRecordId || !fields) {
+          setRelatedRecords([]);
+          return;
+        }
+
+        const fieldIdsOfCurrentModel = itemType.relationships.fields.data.map(
+          (field) => field.id,
+        );
+
+        const linkFieldsOfCurrentModel = Object.entries(fields)
+          .filter(
+            ([fieldId, field]) =>
+              field?.attributes.field_type === "link" &&
+              fieldIdsOfCurrentModel.includes(fieldId),
+          )
+          .flatMap(([_, field]) => (field ? [field] : []));
+
+        const apiKeysOfLinkFields = linkFieldsOfCurrentModel.map(
+          (field) => field.attributes.api_key,
+        );
+
+        const linkedRecordIds = apiKeysOfLinkFields.flatMap((fieldName) => {
+          const data = formValues[fieldName];
+          return data && typeof data === "string" ? [data] : [];
+        });
+
+        const iterator = cmaClient.items.listPagedIterator({
+          filter: { ids: linkedRecordIds.join(",") },
+        });
+
+        const items: Item[] = [];
+        for await (const item of iterator) {
+          items.push(item);
+        }
+
+        setRelatedRecords(items);
+      } catch (error) {
+        console.error("Error fetching related records", error);
+        setRelatedRecords([]);
+      }
+    }
+
+    fetchRecords();
+  }, [item, fields, itemType]);
 
   const templateFields = useMemo<Map<string, string>>(() => {
     const templateMatches = templateString.matchAll(templateParsingRegex);
@@ -52,7 +110,12 @@ export const SEOFriendlyImageNames = ({
               maybeMultiPartFieldName[maybeMultiPartFieldName.length - 1];
             const relatedItemId = formValues[fieldNameInThisModel];
             if (relatedItemId && typeof relatedItemId == "string") {
-              const relatedRecord = await cmaClient.items.find(relatedItemId);
+              const relatedRecord = relatedRecords.find(
+                (related) => related.id === relatedItemId,
+              );
+              if (!relatedRecord) {
+                throw new Error();
+              }
               const relatedFieldData = relatedRecord[fieldNameInRelatedModel];
               const maybeRelatedString = extractLocalizedString(
                 relatedFieldData,
@@ -83,9 +146,7 @@ export const SEOFriendlyImageNames = ({
     }
 
     return parsedFields;
-  }, [templateString, formValues]);
-
-  console.log("templateFields", templateFields);
+  }, [templateString, formValues, relatedRecords]);
 
   const generateCorrectImageBaseName = useCallback(
     ({
@@ -103,8 +164,6 @@ export const SEOFriendlyImageNames = ({
         templateParsingRegex,
         (_, fieldname) => templateFields.get(fieldname) ?? "",
       );
-
-      console.log("replaced template", replacedTemplateString);
 
       return slugify(`${replacedTemplateString} ${mediaType} ${hash}`);
     },
